@@ -4,20 +4,28 @@ Verified 14 August 2026 against a live LaunchDarkly account, applying both
 Terraform stages for real and driving the REST API directly. Terraform provider
 3.1.3, Terraform 1.5.7.
 
-Final state on the verification account: **35 passed, 0 failed, 1 skipped** across 11
-sections. The skip is §11, which needs role attributes — see Defect 1 and the
-re-probe below.
-
 The runs found **four defects and three behaviours** worth knowing. All four defects
 are fixed in this repository. This document exists so nobody has to rediscover them.
 
-> **On the default scoping mode.** The repository ships
-> `scoping_mode = "role_attribute"`, because parameterised roles are the correct
-> pattern and the deny guard exists precisely to make them safe. Role attributes do
-> **not** work on the account verified here, so its local (gitignored)
-> `terraform.tfvars` overrides to `"namespace"`. The committed defaults and the local
-> deployment therefore differ on purpose, and that is stated in the tfvars file
-> itself rather than left to be discovered.
+## Two results, depending on scoping mode
+
+The suite's outcome differs by `scoping_mode`, and both results are worth recording
+because together they bound what this account can and cannot demonstrate.
+
+| Deployed mode | Suite result | What it shows |
+| --- | --- | --- |
+| `role_attribute` (repo default, and how the verification account is deployed) | **29 passed, 6 failed, 1 skipped** | The roles are authored exactly as designed — `proj/${roleAttribute/project}` plus the `notResources` guard. The 6 failures are all §9 reporting that attribute values did not persist, so the teams resolve to zero projects and nobody has effective access. §11 skips for the same reason. |
+| `namespace` (one-line fallback) | **35 passed, 0 failed, 1 skipped** | Working per-unit access, at the cost of per-project isolation: every team's role resolves to every project in the unit. The guard drops to belt-and-braces. |
+
+**The verification account is deployed in `role_attribute` mode**, because the roles
+being authored correctly is the point of the artefact. The §9 failures are the honest
+signal of a real account limitation, not a broken repository — a green suite there
+would require pretending the design is something it is not.
+
+What that means for demonstrating it on such an account: show the **role definition**
+(the attribute in the resource specifier and the guard beneath it), and show the guard
+working via §6, which resolves the policy through a token instead of a team
+assignment. What you cannot show is a live member gaining per-project access.
 
 ## Verified as enforced by the platform
 

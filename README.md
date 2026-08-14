@@ -291,9 +291,15 @@ version with the failures in it, which is the interesting part.
 ## Verified against
 
 Applied for real against a live LaunchDarkly account on **14 August 2026**.
-Provider **3.1.3**, Terraform **1.5.7**. Final result on that account: **35 passed,
-0 failed, 1 skipped** across 11 sections. The skip is §11, which needs role
-attributes; see below.
+Provider **3.1.3**, Terraform **1.5.7**. The result depends on scoping mode, and both
+are worth knowing:
+
+- **`role_attribute`** (the default, and how that account is deployed) — **29 passed,
+  6 failed, 1 skipped**. The roles are authored exactly as designed; the failures are
+  §9 reporting that attribute values did not persist on that account, so the teams
+  resolve to zero projects. A real limitation, honestly surfaced.
+- **`namespace`** (the one-line fallback) — **35 passed, 0 failed, 1 skipped**. Working
+  access, no per-project isolation.
 
 Full results, including the three defects that run exposed and fixed, are in
 [docs/06-verification-results.md](docs/06-verification-results.md). The headlines:

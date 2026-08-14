@@ -4,7 +4,7 @@ Verified 14 August 2026 against a live LaunchDarkly account, applying both
 Terraform stages for real and driving the REST API directly. Terraform provider
 3.1.3, Terraform 1.5.7.
 
-Final state on the verification account: **27 passed, 0 failed, 1 skipped** across 11
+Final state on the verification account: **35 passed, 0 failed, 1 skipped** across 11
 sections. The skip is §11, which needs role attributes — see Defect 1 and the
 re-probe below.
 
@@ -34,7 +34,7 @@ Each of these was exercised against the live API, not inferred from documentatio
 | A token cannot exceed its creator | unit-minted token requesting `admin` could not read outside the namespace (**403**) or create outside it (**403**) | §8 |
 | Delegated token minting stays usable | in-namespace downstream token worked (**200**) | §8 |
 | `base_permissions` writes through correctly | all three roles stored `no_access` | §1 |
-| A `reader` base role really does see everything | a plain reader identity listed **all 7 projects** in the account, and returned `200` on the other unit's project — which the delegated token is refused with `403` | §10 |
+| A `reader` base role really does see everything | a plain reader identity listed **every project in the account**, and returned `200` on the other unit's project — which the delegated token is refused with `403` | §10 |
 | Unit-team members carry no base access | both unit members hold `no_access`; access comes only from catalogue roles | §10 |
 | Role-attribute escaping is correct | stored policy contains exactly `proj/${roleAttribute/project}` — the `$$` HCL escape survives | manual |
 | The deployed assignment resolves | both teams' attached roles resolve to real projects | §9 |
@@ -73,13 +73,19 @@ proving the mechanism while never touching the deployed assignment.
 
 **Fixed** by adding `scoping_mode` to the role catalogue:
 
-- **`"namespace"` (new default, verified working)** — the developer roles name the
-  unit's glob directly, `proj/brand-x-*`. One authored role still covers every
-  project the unit will ever create, so the standing-delegation property is
-  retained. **Trade-off:** a developer can act on every project in the unit, not
-  only the one their team owns. The unit is the boundary; the project is not.
-- **`"role_attribute"`** — the original behaviour, for accounts that have the
-  feature. `set_role_attributes` gates writing the value and defaults to false.
+- **`"role_attribute"`** — the roles name `proj/${roleAttribute/project}` and the
+  project is supplied per team. Per-project isolation inside the unit, and the mode
+  the deny guard exists for. **This is the current default** — see the re-probe below
+  for why, despite this account not supporting it.
+- **`"namespace"`** — the developer roles name the unit's glob directly,
+  `proj/brand-x-*`. One authored role still covers every project the unit will ever
+  create, so the standing-delegation property is retained. **Trade-off:** a developer
+  can act on every project in the unit, not only the one their team owns.
+
+> Historical note: `"namespace"` was briefly made the default immediately after this
+> defect was found, on the grounds that it was the only mode verified working. That
+> was reversed once it became clear it left the guard decorative and buried the
+> mechanism the design exists to demonstrate.
 
 **Also fixed:** added §9 to the test suite, which asks LaunchDarkly what a
 deployed team's attached role actually resolves to. That assertion is what would

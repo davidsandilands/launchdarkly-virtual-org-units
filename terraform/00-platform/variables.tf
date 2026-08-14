@@ -70,15 +70,49 @@ variable "other_unit_key" {
   default     = "brand-y"
 }
 
-variable "seed_other_unit_project" {
+variable "other_unit_projects" {
   description = <<-EOT
-    Create a project belonging to the second unit, as the platform team.
+    Projects to create for the OTHER unit, keyed by the suffix after
+    "<other_unit_key>-". These are the control in the experiment: they exist, and the
+    acting unit's credential must be unable to see, write to, or reach any of them.
 
-    This is the target of the isolation tests: something that demonstrably exists
-    and that the first unit's credential must be unable to see, create in, or
-    reach via a role attribute. Without it the negative tests prove nothing,
-    because absence of a project is indistinguishable from absence of permission.
+    More than one is worth having. A single target proves the boundary holds for a
+    single project; a handful shows the isolation is a property of the namespace
+    rather than a one-off, and it makes the "GET /projects returns only my own"
+    demonstration far more convincing when there is a realistic amount to be
+    invisible.
+
+    Created by the platform team rather than by the other unit's own token, purely
+    because that keeps this stage self-contained. Nothing about the isolation depends
+    on who created them.
+
+    Set to {} to skip seeding entirely, in which case "cannot see it" becomes
+    indistinguishable from "it is not there" and the isolation tests prove nothing.
   EOT
-  type        = bool
-  default     = true
+
+  type = map(object({
+    name = string
+    tags = optional(list(string), [])
+  }))
+
+  default = {
+    payments   = { name = "Payments" }
+    fulfilment = { name = "Fulfilment" }
+    loyalty    = { name = "Loyalty" }
+  }
 }
+
+variable "isolation_target" {
+  description = <<-EOT
+    Which of the other unit's projects the test suite should use as its primary
+    isolation target. Must be a key in other_unit_projects.
+
+    tests/boundary-tests.sh reads this via OTHER_PROJECT_KEY and asserts it is
+    unreachable. Pinning it keeps the tests deterministic as projects are added.
+  EOT
+  type        = string
+  default     = "payments"
+}
+
+# Replaced by other_unit_projects, which takes a map instead of a boolean so the
+# other unit can have a realistic footprint rather than a single token project.

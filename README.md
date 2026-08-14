@@ -134,8 +134,8 @@ flow rather than in reviewed Terraform. `launchdarkly_team_member.role` defaults
 the account** — including the other unit's — no matter which catalogue roles they
 hold.
 
-Verified directly: a plain `reader` identity listed all 7 projects in the test
-account, `brand-y-payments` included, returning `200` on a project the delegated
+Verified directly: a plain `reader` identity listed **every project in the test
+account**, `brand-y-payments` included, returning `200` on a project the delegated
 unit is refused with `403`.
 
 So **every member of a unit team must be created with base role `no_access`** and
@@ -291,7 +291,7 @@ version with the failures in it, which is the interesting part.
 ## Verified against
 
 Applied for real against a live LaunchDarkly account on **14 August 2026**.
-Provider **3.1.3**, Terraform **1.5.7**. Final result on that account: **27 passed,
+Provider **3.1.3**, Terraform **1.5.7**. Final result on that account: **35 passed,
 0 failed, 1 skipped** across 11 sections. The skip is §11, which needs role
 attributes; see below.
 

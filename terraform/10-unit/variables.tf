@@ -31,6 +31,14 @@ variable "products" {
       name = "Checkout"
       tags = ["owner-brand-x", "managed-by-unit"]
     }
+    "search" = {
+      name = "Search"
+      tags = ["owner-brand-x", "managed-by-unit"]
+    }
+    "mobile" = {
+      name = "Mobile app"
+      tags = ["owner-brand-x", "managed-by-unit"]
+    }
   }
 }
 

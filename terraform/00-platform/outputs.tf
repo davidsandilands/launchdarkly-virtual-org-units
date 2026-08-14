@@ -26,10 +26,19 @@ output "acting_unit" {
 
 output "isolation_target_project_key" {
   description = <<-EOT
-    The other unit's project. Feed this to tests/boundary-tests.sh as the resource
-    that must stay unreachable.
+    The other unit's project the test suite asserts is unreachable. Feed to
+    tests/boundary-tests.sh as OTHER_PROJECT_KEY.
   EOT
-  value       = var.seed_other_unit_project ? launchdarkly_project.other_unit_seed[0].key : null
+  value       = try(launchdarkly_project.other_unit_seed[var.isolation_target].key, null)
+}
+
+output "other_unit_project_keys" {
+  description = <<-EOT
+    Every project belonging to the other unit. None of these should be visible to
+    the acting unit's credential -- tests/boundary-tests.sh section 4 asserts that
+    nothing outside the acting unit's namespace appears at all.
+  EOT
+  value       = sort([for p in launchdarkly_project.other_unit_seed : p.key])
 }
 
 output "unit_admin_team_keys" {

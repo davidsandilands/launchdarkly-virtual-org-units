@@ -3,7 +3,7 @@
 #
 # Applied once, by the team that owns the LaunchDarkly account, using an
 # org-admin identity. Everything created here is a guardrail: the role
-# catalogues, the identities that hold them, and one project belonging to the
+# catalogues, the identities that hold them, and a set of projects belonging to the
 # other unit so that isolation can be tested against something real.
 #
 # Nothing in this stage is re-run when a unit onboards a new team. That is the
@@ -93,22 +93,27 @@ resource "launchdarkly_access_token" "unit_automation" {
 }
 
 ###############################################################################
-# A project belonging to the other unit
+# Projects belonging to the other unit
 #
-# The control in the experiment. It exists, it is populated, and the acting
-# unit's credential must not be able to see it, write to it, or reach it by
-# supplying its key as a role attribute value.
+# The control in the experiment. They exist, and the acting unit's credential must
+# not be able to see them, write to them, or reach them by supplying a key as a
+# role attribute value.
+#
+# Several rather than one, deliberately: a single target proves the boundary holds
+# for a single project, whereas a handful shows the isolation is a property of the
+# namespace. It also makes "GET /projects returns only my own" a much better
+# demonstration when there is a realistic amount to be invisible.
 ###############################################################################
 
 resource "launchdarkly_project" "other_unit_seed" {
-  count = var.seed_other_unit_project ? 1 : 0
+  for_each = var.other_unit_projects
 
-  key  = "${var.other_unit_key}-payments"
-  name = "${var.units[var.other_unit_key].name} payments"
+  key  = "${var.other_unit_key}-${each.key}"
+  name = "${var.units[var.other_unit_key].name} ${each.value.name}"
 
   # Tags for inventory only. They are deliberately not referenced by any policy
   # in this repository.
-  tags = ["owner-${var.other_unit_key}", "managed-by-platform"]
+  tags = length(each.value.tags) > 0 ? each.value.tags : ["owner-${var.other_unit_key}", "managed-by-platform"]
 
   environments = {
     development = {
@@ -120,5 +125,17 @@ resource "launchdarkly_project" "other_unit_seed" {
       color    = "ef4444"
       critical = true
     }
+  }
+}
+
+check "isolation_target_exists" {
+  assert {
+    condition     = length(var.other_unit_projects) == 0 || contains(keys(var.other_unit_projects), var.isolation_target)
+    error_message = <<-EOT
+      isolation_target ("${var.isolation_target}") is not a key in other_unit_projects.
+      Declared: ${join(", ", keys(var.other_unit_projects))}.
+      The test suite reads this as OTHER_PROJECT_KEY and would assert against a
+      project that does not exist.
+    EOT
   }
 }

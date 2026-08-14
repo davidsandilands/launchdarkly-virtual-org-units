@@ -133,24 +133,17 @@ belt-and-braces: it survives someone later widening a resource specifier above
 without re-reading the whole policy. Keep it — it costs nothing and it is the
 statement that makes the role safe to copy as a template.
 
-The documentation is explicit on the precedence: *"If a statement within a policy
-explicitly denies access to a resource and action, access is denied. This
-statement overrides any other statement in the policy that allows access."*
-Statement order does not matter.
+The documentation is explicit on the precedence, in both directions:
 
-So the misassignment is not blocked — it is **inert**. Terraform will apply, the
-UI will show the role attached, and the affected developers will simply have no
-access. That is a deliberate property and it has a cost: the failure is silent.
-Nobody gets an error telling them they did something wrong. Audit
-role-attachment events if you want to *notice* the mistake as well as survive it.
+- Within one policy: *"If a statement within a policy explicitly denies access to a
+  resource and action, access is denied. This statement overrides any other statement
+  in the policy that allows access."*
+- Across roles: *"if a member has one role that allows access to a resource, and
+  another role that restricts access to a resource, the member is allowed access."*
 
-**The critical limit.** This works only within a single policy. Across roles,
-LaunchDarkly permissions are additive and the more permissive wins: *"if a member
-has one role that allows access to a resource, and another role that restricts
-access to a resource, the member is allowed access."* So the guard cannot defend
-against a *different, broader* role being attached to the same team. It protects
-against a wrong **attribute value**; it does not protect against a wrong **role**.
-That case is a process control, and [04](04-enforced-vs-process.md) covers it.
+That asymmetry is the whole reason the guard has to live **inside** each catalogue
+role rather than in a separate "deny everything else" role. A separate deny role
+would be overridden by the very allow it was meant to restrain.
 
 ## `base_permissions` must be `no_access`
 
@@ -184,9 +177,9 @@ roles they hold, because base role and custom roles combine additively and the m
 permissive wins. The deny guard does not help — it overrides allows within its own
 policy, and a base role is not a statement in it.
 
-Verified against the live account: a plain `reader` identity listed all 7 projects
-including the other unit's, returning `200` on `brand-y-payments` — the same
-project the delegated unit token is refused with `403`.
+Verified against the live account: a plain `reader` identity listed **every project
+in the account**, including the other unit's, returning `200` on `brand-y-payments` —
+the same project the delegated unit token is refused with `403`.
 
 So every member of a unit team must be created with `no_access`:
 

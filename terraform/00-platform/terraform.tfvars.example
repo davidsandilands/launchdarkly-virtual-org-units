@@ -33,4 +33,15 @@ other_unit_key  = "brand-y"
 
 create_admin_teams         = true
 create_unit_service_tokens = true
-seed_other_unit_project    = true
+
+# Projects for the OTHER unit -- the control the isolation tests assert against.
+# Several rather than one, so "GET /projects returns only my own" has a realistic
+# amount to be invisible.
+other_unit_projects = {
+  payments   = { name = "Payments" }
+  fulfilment = { name = "Fulfilment" }
+  loyalty    = { name = "Loyalty" }
+}
+
+# Which of those the test suite pins as its primary unreachable target.
+isolation_target = "payments"

@@ -29,13 +29,15 @@ This creates, as the account owner:
 - role catalogues for two units, `brand-x` and `brand-y` — three roles each
 - a `brand-x-admins` and `brand-y-admins` team holding each unit's admin role
 - a service token per unit, capped at that unit's admin role
-- `brand-y-payments`, a project belonging to the other unit
+- three projects belonging to the other unit: `brand-y-payments`,
+  `brand-y-fulfilment`, `brand-y-loyalty`
 
 **Talking point.** The same module produced both catalogues. Onboarding a third
 unit is one map entry in `terraform.tfvars`, not a redesign.
 
-**Talking point.** `brand-y-payments` exists so the isolation tests have a real
-target. Proving you cannot see a project that was never created proves nothing.
+**Talking point.** Those exist so the isolation tests have real targets. Proving you
+cannot see a project that was never created proves nothing. Several rather than one
+also makes step 5 land harder — there is a realistic amount to be invisible.
 
 Look at the roles in the UI now — Organisation → Roles. Open
 `brand-x-developer` and switch to the advanced editor. Point at the last
@@ -62,9 +64,10 @@ terraform init
 LAUNCHDARKLY_ACCESS_TOKEN=$LD_UNIT_TOKEN terraform apply
 ```
 
-Creates `brand-x-checkout` with `development` and `production` environments, a
-`brand-x-checkout-leads` team and a `brand-x-checkout-devs` team, each holding a
-catalogue role with `project = brand-x-checkout` supplied as the role attribute.
+Creates three projects — `brand-x-checkout`, `brand-x-search`, `brand-x-mobile` —
+each with `development` and `production` environments, and a `-leads` and `-devs`
+team per project holding a catalogue role with that project supplied as the role
+attribute. Six teams from one apply.
 
 **The talking point of the whole demo.** Nothing in step 1 was re-run. The
 platform team was not involved. No role was authored — check the output:
@@ -73,8 +76,10 @@ platform team was not involved. No role was authored — check the output:
 roles_authored_by_this_stage = []
 ```
 
-Onboarding a second team is another entry in `products`, applied by the same
-pipeline with the same credential. That is what standing delegation looks like.
+Onboarding a fourth product area is another entry in `products`, applied by the same
+pipeline with the same credential. That is what standing delegation looks like: the
+unit added three product areas here and the platform team was not involved in any of
+them.
 
 ## Step 4 — Try to escape the namespace
 
@@ -113,8 +118,9 @@ curl -s https://app.launchdarkly.com/api/v2/projects \
   -H "Authorization: $LD_UNIT_TOKEN" | jq -r '.items[].key'
 ```
 
-Only `brand-x-*` keys. `brand-y-payments` is not listed as forbidden — it is
-simply not there.
+Only `brand-x-*` keys. None of the three `brand-y-*` projects appear, and neither do
+any unrelated pre-existing projects in the account. They are not listed as forbidden
+— they are simply not there.
 
 ```sh
 curl -i https://app.launchdarkly.com/api/v2/projects/brand-y-payments \

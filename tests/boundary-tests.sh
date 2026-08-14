@@ -560,8 +560,31 @@ bold "9. The deployed team assignment actually resolves"
 # LaunchDarkly reports what a team's attached role resolves to, so ask it
 # directly rather than inferring from a simulation.
 
-for team_pair in "${UNIT_KEY}-checkout-leads:${UNIT_KEY}-lead-developer" \
-                 "${UNIT_KEY}-checkout-devs:${UNIT_KEY}-developer"; do
+# Discovered rather than hardcoded, so the suite scales with the products map instead
+# of silently checking only the first product area.
+#
+# NOTE: `limit` is capped at 100 on this endpoint. Asking for more returns an
+# invalid_request error, and a naive `.items[]?` turns that into an empty list -- i.e.
+# an API error becomes a clean skip. Check for `.items` explicitly so a broken request
+# is reported as a failure instead of quietly passing as "nothing to test".
+teams_resp=$(body "$LD_ADMIN_TOKEN" GET "/teams?limit=100")
+
+if ! echo "$teams_resp" | jq -e '.items' >/dev/null 2>&1; then
+  fail "team-list-failed" "could not list teams: $(echo "$teams_resp" | jq -rc '.message? // .' | head -c 120)"
+  team_pairs=""
+else
+  team_pairs=""
+  for t in $(echo "$teams_resp" | jq -r --arg ns "${UNIT_KEY}-" \
+             '[.items[]?.key | select(startswith($ns))] | sort | .[]'); do
+    case "$t" in
+      *-leads) team_pairs="${team_pairs} ${t}:${UNIT_KEY}-lead-developer" ;;
+      *-devs)  team_pairs="${team_pairs} ${t}:${UNIT_KEY}-developer" ;;
+    esac
+  done
+  [ -z "$team_pairs" ] && skip "no ${UNIT_KEY}-*-leads or ${UNIT_KEY}-*-devs teams found; run terraform/10-unit"
+fi
+
+for team_pair in $team_pairs; do
   team="${team_pair%%:*}"
   want_role="${team_pair#*:}"
 

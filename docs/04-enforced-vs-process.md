@@ -5,7 +5,7 @@ guarantees is worse than one with known gaps, because the gaps get planned aroun
 and the overstatements get relied upon.
 
 Everything in the "Enforced" section below was exercised against a live account on
-14 August 2026 — 27 passing, 1 skipped. Results, plus the four defects that
+14 August 2026 — 35 passing, 1 skipped. Results, plus the four defects that
 run exposed, are in [06-verification-results.md](06-verification-results.md).
 
 ## Enforced by LaunchDarkly

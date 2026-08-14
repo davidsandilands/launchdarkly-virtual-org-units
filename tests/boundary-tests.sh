@@ -573,6 +573,55 @@ for team_pair in "${UNIT_KEY}-checkout-leads:${UNIT_KEY}-lead-developer" \
 done
 
 # ---------------------------------------------------------------------------
+bold "10. Members of unit teams hold no base-role access of their own"
+# ---------------------------------------------------------------------------
+# The other half of the base-permissions trap, and the one that bites humans
+# rather than roles.
+#
+# An account member's BASE role is additive with whatever custom roles they hold,
+# and the more permissive of the two wins. A member left at the provider's default
+# of `reader` can read EVERY project in the account. Verified directly against the
+# live account: a plain reader identity listed all 7 projects, including the other
+# unit's.
+#
+# The deny guard cannot rescue this. It overrides allows within its own policy, and
+# a base role is not a statement in that policy. Nor does the namespace apply to it.
+#
+# So every member of a unit team must be created with base role `no_access` and
+# draw all of their access from catalogue roles.
+
+members=$(body "$LD_ADMIN_TOKEN" GET "/members?limit=100&expand=teams")
+
+if ! echo "$members" | jq -e '.items' >/dev/null 2>&1; then
+  skip "could not list account members: $(echo "$members" | jq -rc '.message? // .' | head -c 120)"
+else
+  note "account members: $(echo "$members" | jq -r '[.items[] | "\(.email)=\(.role)"] | join("  ")')"
+
+  in_unit=$(echo "$members" | jq -r --arg ns "${UNIT_KEY}-" \
+    '[.items[] | select([(.teams // [])[].key // ""] | any(startswith($ns)))] | length')
+
+  if [ "$in_unit" = "0" ]; then
+    skip "no account members belong to ${UNIT_KEY}-* teams yet"
+    note "this assertion only becomes meaningful once real people are added to unit teams"
+  else
+    offenders=$(echo "$members" | jq -r --arg ns "${UNIT_KEY}-" \
+      '[.items[]
+        | select([(.teams // [])[].key // ""] | any(startswith($ns)))
+        | select(.role != "no_access")
+        | "\(.email) (base role=\(.role))"] | join("; ")')
+
+    if [ -z "$offenders" ]; then
+      pass "all ${in_unit} member(s) of ${UNIT_KEY}-* teams have base role no_access"
+    else
+      fail "member-base-role" "unit-team member(s) hold a base role above no_access: ${offenders}"
+      note "a base role of reader grants read on EVERY project in the account"
+      note "the namespace does not constrain it and the deny guard cannot cancel it"
+      note "set the member's role to no_access; their access should come only from catalogue roles"
+    fi
+  fi
+fi
+
+# ---------------------------------------------------------------------------
 echo
 bold "Summary"
 echo "  passed  ${PASS}"

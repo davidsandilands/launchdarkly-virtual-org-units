@@ -134,11 +134,48 @@ Omit one line of HCL and every role in the catalogue can read every project in t
 account. All three roles set it explicitly, and
 `tests/boundary-tests.sh` section 1 asserts it on each.
 
-The same trap exists one level up, on account members:
-`launchdarkly_team_member.role` also defaults to `reader`. A developer added to
-the account with the default base role can read everything regardless of which
-custom roles they hold. Unit members should be created with `no_access` and get
-their access entirely from catalogue roles.
+## Members must be `no_access` too
+
+The same trap one level up, and the one more likely to catch you out, because it
+happens in the invite flow rather than in reviewed Terraform.
+
+`launchdarkly_team_member.role` also defaults to **`reader`**. A member left at
+`reader` can read **every project in the account**, regardless of which catalogue
+roles they hold, because base role and custom roles combine additively and the more
+permissive wins. The deny guard does not help — it overrides allows within its own
+policy, and a base role is not a statement in it.
+
+Verified against the live account: a plain `reader` identity listed all 7 projects
+including the other unit's, returning `200` on `brand-y-payments` — the same
+project the delegated unit token is refused with `403`.
+
+So every member of a unit team must be created with `no_access`:
+
+```hcl
+resource "launchdarkly_team_member" "developer" {
+  email = "someone@example.com"
+  role  = "no_access" # never omit — the provider default is reader
+}
+```
+
+```sh
+curl -X POST https://app.launchdarkly.com/api/v2/members \
+  -H "Authorization: $LD_ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '[{"email":"someone@example.com","role":"no_access"}]'
+```
+
+Two notes on this:
+
+- **The provider's own docs are inconsistent here.** The `launchdarkly_team_member`
+  *resource* documents `reader`, `writer`, `no_access`, `admin` — so `no_access` is
+  settable. The matching *data source* documents only `owner`, `reader`, `writer`,
+  `admin`. Trust the resource; `no_access` works.
+- **If SCIM or an identity provider creates your members**, this becomes a mapping
+  question rather than a Terraform one. Confirm what base role provisioned users
+  land on before relying on any isolation claim in this repository.
+
+`tests/boundary-tests.sh` §10 checks every member of a `brand-x-*` team and names
+any that hold more than `no_access`.
 
 ## 1. Unit admin
 

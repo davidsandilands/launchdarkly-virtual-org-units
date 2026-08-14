@@ -73,6 +73,19 @@ variable "lead_member_emails" {
   description = <<-EOT
     Emails of existing account members to place in the leads team.
 
+    These members MUST have the account base role `no_access`. A member left at the
+    default of `reader` can read every project in the account, including other
+    units', no matter which catalogue roles they hold -- base role and custom roles
+    combine additively and the more permissive wins. The deny guard inside the
+    catalogue roles cannot cancel it.
+
+    Verified: a plain reader identity listed all 7 projects in the test account,
+    reading the other unit's project with 200 where the delegated token gets 403.
+
+    This module does not create members, so it cannot enforce that. Check it with
+    tests/boundary-tests.sh §10, which names any unit-team member holding more than
+    no_access.
+
     Leave empty to create the team without members, which is the right choice when
     an identity provider owns membership. Only one system should be the authority
     on team membership: if SCIM or IdP-managed team sync populates a team, having

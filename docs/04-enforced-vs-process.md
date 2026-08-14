@@ -5,7 +5,7 @@ guarantees is worse than one with known gaps, because the gaps get planned aroun
 and the overstatements get relied upon.
 
 Everything in the "Enforced" section below was exercised against a live account on
-14 August 2026 — 26 assertions, all passing. Results, plus the three defects that
+14 August 2026 — 27 assertions, all passing. Results, plus the three defects that
 run exposed, are in [06-verification-results.md](06-verification-results.md).
 
 ## Enforced by LaunchDarkly
@@ -223,6 +223,7 @@ out contractually, since it is effectively a second organisation.
 | Token exceeding its creator | **Yes** | §8 | capped and fixed at creation — but metadata lies, see above |
 | Production targeting by developers | **Yes** | §7 | environment-scoped allow + explicit deny |
 | Base permissions granting org-wide read | **Yes**, if set | §1 | `no_access` explicitly; provider defaults to `reader` |
+| A member's base role granting org-wide read | **Yes**, if set | §10 | members created `no_access`; provider defaults to `reader`, and a reader sees every project |
 | Assignment actually taking effect | n/a | §9 | read back the resolved project count; do not trust apply success |
 | Unit authoring its own roles | No | §5 | not delegated; `createRole` withheld |
 | Attaching a broad role to a unit team | **No** | — | catalogue discipline + audit log alerting |

@@ -157,7 +157,7 @@ cd ../../tests
 ./boundary-tests.sh
 ```
 
-Nine sections, 26 assertions, mostly passing by being refused. It also checks the
+Ten sections, 27 assertions, mostly passing by being refused. It also checks the
 three things that are easy to get wrong and invisible when you do:
 
 - every catalogue role has `basePermissions: no_access` — the provider defaults
@@ -201,6 +201,19 @@ Set the attribute back to `brand-x-checkout` and confirm access returns.
 > everything regardless, and access tokens cannot carry role attributes, which is
 > why the test suite simulates it instead. It is the one claim in this repository
 > that a live run could not verify.
+>
+> **That member must have base role `no_access`.** At the default of `reader` they
+> would see every project in the account and the demo would show the opposite of
+> what you intend. Create them with:
+>
+> ```sh
+> curl -X POST https://app.launchdarkly.com/api/v2/members \
+>   -H "Authorization: $LD_ADMIN_TOKEN" -H 'Content-Type: application/json' \
+>   -d '[{"email":"you+brandxdev@example.com","role":"no_access"}]'
+> ```
+>
+> Then add them to `brand-x-checkout-devs`. Gmail-style `+suffix` addresses work
+> well for this — one mailbox, several distinct members.
 
 ## Step 8b — Prove the assignment actually took effect
 

@@ -82,18 +82,57 @@ are worth saying to a security reviewer before they ask:
 
 Full detail: [docs/04-enforced-vs-process.md](docs/04-enforced-vs-process.md).
 
-## The trap that voids everything
+## The two traps that void everything
 
-`base_permissions` on a custom role defaults to **`reader`** in the Terraform
-provider. `reader` grants read access to every project in the account, permissions
-combine additively with the more permissive winning, and the `deny viewProject`
-guard does *not* cancel it — that deny only overrides allows within the same
-policy, and base permissions are not a statement in it.
+Both are the same mistake at different levels, both default the wrong way, and
+either one on its own makes the entire namespace boundary decorative. Neither is
+caught by the deny guard, because that guard overrides allows *within its own
+policy* and a base role is not a statement in it.
 
-Omit one line of HCL and the entire namespace boundary is decorative. Every role
-here sets `base_permissions = "no_access"` explicitly, and
-`tests/boundary-tests.sh` asserts it. The same default exists on account members
-(`launchdarkly_team_member.role`).
+### 1. `base_permissions` on a role defaults to `reader`
+
+In the Terraform provider, omitting `base_permissions` gives the role account-wide
+read. Permissions combine additively with the more permissive winning, so a
+carefully namespaced policy becomes irrelevant.
+
+Every role here sets `base_permissions = "no_access"` explicitly.
+`tests/boundary-tests.sh` §1 asserts it on all three.
+
+### 2. A member's base role also defaults to `reader`
+
+**This is the one people actually get wrong**, because it happens in the invite
+flow rather than in reviewed Terraform. `launchdarkly_team_member.role` defaults to
+`reader` too, and an account member left at `reader` can read **every project in
+the account** — including the other unit's — no matter which catalogue roles they
+hold.
+
+Verified directly: a plain `reader` identity listed all 7 projects in the test
+account, `brand-y-payments` included, returning `200` on a project the delegated
+unit is refused with `403`.
+
+So **every member of a unit team must be created with base role `no_access`** and
+draw all of their access from catalogue roles:
+
+```hcl
+resource "launchdarkly_team_member" "developer" {
+  email = "someone@example.com"
+  role  = "no_access" # never omit this — the default is reader
+}
+```
+
+```sh
+# or via the API
+curl -X POST https://app.launchdarkly.com/api/v2/members \
+  -H "Authorization: $LD_ADMIN_TOKEN" -H 'Content-Type: application/json' \
+  -d '[{"email":"someone@example.com","role":"no_access"}]'
+```
+
+`tests/boundary-tests.sh` §10 asserts that every member of a `brand-x-*` team has
+base role `no_access`, and tells you which ones do not.
+
+If your identity provider creates members via SCIM, this is a mapping question
+rather than a Terraform one: confirm what base role provisioned users land on
+before you rely on any of the isolation claims above.
 
 ## Layout
 
@@ -116,7 +155,7 @@ terraform/
 policies/                    the same policies as raw JSON, for the UI or REST API
                              plus variant-role-attribute-* for the other scoping mode
 tests/
-  boundary-tests.sh          9 sections, 26 assertions; most pass by being refused
+  boundary-tests.sh          10 sections, 27 assertions; most pass by being refused
 ```
 
 The Terraform is split by **who applies it**, not by resource type. That split is
@@ -224,7 +263,7 @@ version with the failures in it, which is the interesting part.
 ## Verified against
 
 Applied for real against a live LaunchDarkly account on **14 August 2026**.
-Provider **3.1.3**, Terraform **1.5.7**. Final result: **26 assertions, 26 passed,
+Provider **3.1.3**, Terraform **1.5.7**. Final result: **27 assertions, 27 passed,
 0 failed, 0 skipped**.
 
 Full results, including the three defects that run exposed and fixed, are in

@@ -4,9 +4,9 @@ Verified 14 August 2026 against a live LaunchDarkly account, applying both
 Terraform stages for real and driving the REST API directly. Terraform provider
 3.1.3, Terraform 1.5.7.
 
-Final state: **26 assertions, 26 passed, 0 failed, 0 skipped.**
+Final state: **27 assertions, 27 passed, 0 failed, 0 skipped.**
 
-The run found three defects and two behaviours worth knowing. All three defects
+The run found three defects and three behaviours worth knowing. All three defects
 are fixed in this repository. This document exists so nobody has to rediscover
 them.
 
@@ -18,13 +18,15 @@ Each of these was exercised against the live API, not inferred from documentatio
 | --- | --- | --- |
 | Creation is confined to the key namespace | `POST /projects` with an out-of-namespace key → **403**; in-namespace key → **201** | §2 |
 | Same for teams | out-of-namespace `POST /teams` → **403**; in-namespace → **201** | §3 |
-| Everything unnamed is denied by default | unit token's `GET /projects` returned only its own; four unrelated pre-existing projects invisible; direct read of the other unit's project → **403**; flag write into it → **403** | §4 |
+| Everything unnamed is denied by default | unit token's `GET /projects` returned only its own; every unrelated pre-existing project invisible; direct read of the other unit's project → **403**; flag write into it → **403** | §4 |
 | Role authoring can be withheld | `POST /roles` as the unit → **403** | §5 |
 | Deny overrides allow within one policy | policy resolved against another unit's project granted neither read nor write (**403** both) | §6 |
 | Environment-scoped targeting holds | same role, same project: toggle in `development` → **200**, in `production` → **403** | §7 |
 | A token cannot exceed its creator | unit-minted token requesting `admin` could not read outside the namespace (**403**) or create outside it (**403**) | §8 |
 | Delegated token minting stays usable | in-namespace downstream token worked (**200**) | §8 |
 | `base_permissions` writes through correctly | all three roles stored `no_access` | §1 |
+| A `reader` base role really does see everything | a plain reader identity listed **all 7 projects** in the account, and returned `200` on the other unit's project — which the delegated token is refused with `403` | §10 |
+| Unit-team members carry no base access | both unit members hold `no_access`; access comes only from catalogue roles | §10 |
 | Role-attribute escaping is correct | stored policy contains exactly `proj/${roleAttribute/project}` — the `$$` HCL escape survives | manual |
 | The deployed assignment resolves | both teams' attached roles resolve to real projects | §9 |
 
@@ -132,7 +134,33 @@ will show an `admin` service token that is not one.** Anyone auditing token
 creation events or listing tokens by role will read this wrong. Do not treat the
 `role` field on a token as evidence of effective permission.
 
-## Behaviour 2 — `check` blocks warn, they do not block
+## Behaviour 2 — a `reader` base role defeats the whole boundary
+
+Worth separating out because it applies to **members**, not roles, and so is
+reached through the invite flow rather than through reviewed Terraform.
+
+A plain `reader` identity was able to list every project in the account — all 7,
+including the other unit's `brand-y-payments`, which it read with `200` while the
+delegated unit token gets `403` on the same project.
+
+Base role and custom roles combine additively and the more permissive wins, so a
+member left at `reader` has account-wide read no matter which catalogue roles they
+hold. The deny guard cannot cancel it: that guard overrides allows within its own
+policy, and a base role is not a statement in it.
+
+`launchdarkly_team_member.role` defaults to `reader`, exactly as
+`base_permissions` does on a role. Members of unit teams must be created with
+`no_access`.
+
+Note also a documentation inconsistency in the provider: the
+`launchdarkly_team_member` *resource* lists `reader`, `writer`, `no_access`,
+`admin`, while the matching *data source* lists only `owner`, `reader`, `writer`,
+`admin`. The resource is correct — `no_access` is settable and works.
+
+**Covered by §10**, which names any member of a `<unit>-*` team holding more than
+`no_access`.
+
+## Behaviour 3 — `check` blocks warn, they do not block
 
 Terraform `check` blocks in stage 00 validate that the acting and other unit keys
 are declared and distinct. They passed, so this was not exercised in anger, but

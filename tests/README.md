@@ -62,6 +62,7 @@ Requires `bash`, `curl`, `jq`. Exits non-zero on any failure.
 | 7 | Developer can toggle in development, cannot in production | Confirms the role grants real access where it should — a suite of pure refusals cannot tell you whether the role works at all. |
 | 8 | A unit-minted token cannot exceed the unit | The strongest guarantee in the design. Requires `allow_token_minting = true`; skips cleanly otherwise. Asserts the *effect*, not the mechanism, because the mint request may succeed and be capped silently. |
 | 9 | The deployed team assignments resolve to real projects | Reads back what LaunchDarkly says the attached role covers. Sections 1–8 all passed once while both teams resolved to **zero** projects, because they test policies via inline-role tokens rather than the deployment. |
+| 10 | Every member of a unit team has base role `no_access` | The base-permissions trap at the human level. A member left at the default `reader` reads every project in the account regardless of their catalogue roles, and the deny guard cannot cancel it. Skips with a note if no members are in unit teams yet. |
 
 ## What section 6 does and does not do
 

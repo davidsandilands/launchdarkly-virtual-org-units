@@ -1,0 +1,79 @@
+[
+  {
+    "effect": "allow",
+    "actions": ["viewProject"],
+    "resources": ["proj/${roleAttribute/project}"]
+  },
+  {
+    "effect": "allow",
+    "actions": ["viewSdkKey"],
+    "resources": ["proj/${roleAttribute/project}:env/development"]
+  },
+  {
+    "effect": "allow",
+    "actions": [
+      "createFlag",
+      "updateName",
+      "updateDescription",
+      "updateTags",
+      "updateFlagVariations",
+      "updateFlagDefaultVariations",
+      "updateTemporary",
+      "updateMaintainer"
+    ],
+    "resources": ["proj/${roleAttribute/project}:env/*:flag/*"]
+  },
+  {
+    "effect": "allow",
+    "actions": [
+      "updateOn",
+      "updateTargets",
+      "updateRules",
+      "updateFallthrough",
+      "updateOffVariation",
+      "updatePrerequisites",
+      "updateExpiringTargets",
+      "updateScheduledChanges"
+    ],
+    "resources": ["proj/${roleAttribute/project}:env/development:flag/*"]
+  },
+  {
+    "effect": "allow",
+    "actions": ["createApprovalRequest"],
+    "resources": ["proj/${roleAttribute/project}:env/production:flag/*"]
+  },
+  {
+    "effect": "allow",
+    "actions": [
+      "createSegment",
+      "updateName",
+      "updateDescription",
+      "updateTags",
+      "updateIncluded",
+      "updateExcluded",
+      "updateRules"
+    ],
+    "resources": ["proj/${roleAttribute/project}:env/development:segment/*"]
+  },
+  {
+    "effect": "deny",
+    "actions": [
+      "updateOn",
+      "updateTargets",
+      "updateRules",
+      "updateFallthrough",
+      "updateOffVariation",
+      "updatePrerequisites",
+      "updateExpiringTargets",
+      "updateScheduledChanges",
+      "applyApprovalRequest",
+      "reviewApprovalRequest"
+    ],
+    "resources": ["proj/${roleAttribute/project}:env/production:flag/*"]
+  },
+  {
+    "effect": "deny",
+    "actions": ["viewProject"],
+    "notResources": ["proj/brand-x-*"]
+  }
+]

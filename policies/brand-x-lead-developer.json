@@ -1,0 +1,60 @@
+[
+  {
+    "effect": "allow",
+    "actions": ["viewProject"],
+    "resources": ["proj/brand-x-*"]
+  },
+  {
+    "effect": "allow",
+    "actions": ["viewSdkKey"],
+    "resources": ["proj/brand-x-*:env/*"]
+  },
+  {
+    "effect": "allow",
+    "actions": [
+      "createFlag",
+      "updateName",
+      "updateDescription",
+      "updateTags",
+      "updateFlagVariations",
+      "updateFlagDefaultVariations",
+      "updateTemporary",
+      "updateMaintainer",
+      "updateOn",
+      "updateTargets",
+      "updateRules",
+      "updateFallthrough",
+      "updateOffVariation",
+      "updatePrerequisites",
+      "updateExpiringTargets",
+      "updateScheduledChanges",
+      "deleteFlag"
+    ],
+    "resources": ["proj/brand-x-*:env/*:flag/*"]
+  },
+  {
+    "effect": "allow",
+    "actions": ["createApprovalRequest", "reviewApprovalRequest", "applyApprovalRequest"],
+    "resources": ["proj/brand-x-*:env/*:flag/*"]
+  },
+  {
+    "effect": "allow",
+    "actions": [
+      "createSegment",
+      "deleteSegment",
+      "updateName",
+      "updateDescription",
+      "updateTags",
+      "updateIncluded",
+      "updateExcluded",
+      "updateRules",
+      "updateExpiringTargets"
+    ],
+    "resources": ["proj/brand-x-*:env/*:segment/*"]
+  },
+  {
+    "effect": "deny",
+    "actions": ["viewProject"],
+    "notResources": ["proj/brand-x-*"]
+  }
+]

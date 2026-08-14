@@ -1,0 +1,25 @@
+# Terraform state contains service tokens in plaintext. Never commit it.
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform/
+.terraform.tfstate.lock.info
+crash.log
+crash.*.log
+
+# Real values, as opposed to the committed .example files
+*.tfvars
+!*.tfvars.example
+*.auto.tfvars
+
+# Provider lock files are usually worth committing; excluded here because this is
+# a demo meant to pick up the current 3.x provider on a fresh clone.
+.terraform.lock.hcl
+
+# Local
+.DS_Store
+*.swp
+
+# Credentials for the test suite, and local Claude Code permission grants
+.env
+.claude/settings.local.json

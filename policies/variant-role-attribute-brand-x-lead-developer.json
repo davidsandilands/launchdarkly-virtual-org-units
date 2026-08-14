@@ -1,0 +1,60 @@
+[
+  {
+    "effect": "allow",
+    "actions": ["viewProject"],
+    "resources": ["proj/${roleAttribute/project}"]
+  },
+  {
+    "effect": "allow",
+    "actions": ["viewSdkKey"],
+    "resources": ["proj/${roleAttribute/project}:env/*"]
+  },
+  {
+    "effect": "allow",
+    "actions": [
+      "createFlag",
+      "updateName",
+      "updateDescription",
+      "updateTags",
+      "updateFlagVariations",
+      "updateFlagDefaultVariations",
+      "updateTemporary",
+      "updateMaintainer",
+      "updateOn",
+      "updateTargets",
+      "updateRules",
+      "updateFallthrough",
+      "updateOffVariation",
+      "updatePrerequisites",
+      "updateExpiringTargets",
+      "updateScheduledChanges",
+      "deleteFlag"
+    ],
+    "resources": ["proj/${roleAttribute/project}:env/*:flag/*"]
+  },
+  {
+    "effect": "allow",
+    "actions": ["createApprovalRequest", "reviewApprovalRequest", "applyApprovalRequest"],
+    "resources": ["proj/${roleAttribute/project}:env/*:flag/*"]
+  },
+  {
+    "effect": "allow",
+    "actions": [
+      "createSegment",
+      "deleteSegment",
+      "updateName",
+      "updateDescription",
+      "updateTags",
+      "updateIncluded",
+      "updateExcluded",
+      "updateRules",
+      "updateExpiringTargets"
+    ],
+    "resources": ["proj/${roleAttribute/project}:env/*:segment/*"]
+  },
+  {
+    "effect": "deny",
+    "actions": ["viewProject"],
+    "notResources": ["proj/brand-x-*"]
+  }
+]

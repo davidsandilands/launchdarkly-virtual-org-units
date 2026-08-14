@@ -1,0 +1,28 @@
+# Copy to terraform.tfvars and edit.
+#
+# Apply this with the UNIT's delegated token, not an org admin token:
+#   export LAUNCHDARKLY_ACCESS_TOKEN=$LD_UNIT_TOKEN
+
+unit_key  = "brand-x"
+unit_name = "Brand X"
+
+products = {
+  "checkout" = {
+    name = "Checkout"
+    tags = ["owner-brand-x", "managed-by-unit"]
+
+    # Emails of EXISTING account members. Leave empty if an identity provider owns
+    # team membership -- only one system should be the authority, or Terraform and
+    # SCIM will overwrite each other on every apply.
+    lead_member_emails      = []
+    developer_member_emails = []
+  }
+
+  # Onboarding a second team is this, and nothing else. No platform-team ticket,
+  # no new role.
+  #
+  # "search" = {
+  #   name = "Search"
+  #   tags = ["owner-brand-x", "managed-by-unit"]
+  # }
+}

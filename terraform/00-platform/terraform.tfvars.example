@@ -1,0 +1,30 @@
+# Copy to terraform.tfvars and edit. Do not put the API token in here -- use
+#   export LAUNCHDARKLY_ACCESS_TOKEN=api-xxxxxxxx
+
+units = {
+  "brand-x" = {
+    name = "Brand X"
+
+    # Leave false unless you want the unit's own pipeline to be able to delete
+    # its projects and teams. Terraform will attempt deletion whenever a resource
+    # block is removed, so this is the difference between a bad merge being an
+    # inconvenience and it being an incident.
+    allow_destructive_actions = false
+
+    # Turn on to let the unit mint its own downstream pipeline tokens. Safe with
+    # respect to the namespace -- a token cannot exceed its creator -- but it is a
+    # rotation commitment, since token permissions are fixed at creation.
+    allow_token_minting = false
+  }
+
+  "brand-y" = {
+    name = "Brand Y"
+  }
+}
+
+acting_unit_key = "brand-x"
+other_unit_key  = "brand-y"
+
+create_admin_teams         = true
+create_unit_service_tokens = true
+seed_other_unit_project    = true

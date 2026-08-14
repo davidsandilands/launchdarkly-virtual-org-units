@@ -1,0 +1,41 @@
+[
+  {
+    "effect": "allow",
+    "actions": ["createProject", "viewProject", "updateProjectName", "updateTags"],
+    "resources": ["proj/brand-x-*"]
+  },
+  {
+    "effect": "allow",
+    "actions": [
+      "createEnvironment",
+      "updateName",
+      "updateColor",
+      "updateTtl",
+      "updateTags",
+      "updateApprovalSettings",
+      "updateRequireComments",
+      "updateConfirmChanges",
+      "updateCritical",
+      "viewSdkKey"
+    ],
+    "resources": ["proj/brand-x-*:env/*"]
+  },
+  {
+    "effect": "allow",
+    "actions": [
+      "createTeam",
+      "viewTeam",
+      "updateTeamName",
+      "updateTeamDescription",
+      "updateTeamMembers",
+      "updateTeamCustomRoles",
+      "updateTeamRoleAttributes"
+    ],
+    "resources": ["team/brand-x-*"]
+  },
+  {
+    "effect": "deny",
+    "actions": ["viewProject"],
+    "notResources": ["proj/brand-x-*"]
+  }
+]

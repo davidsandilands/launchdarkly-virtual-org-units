@@ -157,7 +157,7 @@ cd ../../tests
 ./boundary-tests.sh
 ```
 
-Ten sections, 27 assertions, mostly passing by being refused. It also checks the
+Eleven sections, mostly passing by being refused. It also checks the
 three things that are easy to get wrong and invisible when you do:
 
 - every catalogue role has `basePermissions: no_access` — the provider defaults
@@ -165,21 +165,31 @@ three things that are easy to get wrong and invisible when you do:
   whole boundary
 - the developer role can toggle in `development` and cannot in `production`, in
   the same project with the same role
-- the deployed team assignments resolve to a non-zero number of projects (§9) —
-  the assertion that caught a silent, total failure during verification
+- the deployed team assignments actually resolve (§9) — exactly one project each in
+  `role_attribute` mode. This is the assertion that caught a silent, total failure
+  during verification, and it is the one to watch: **zero means role attributes are
+  not taking effect in your account**, and step 8 below will not be demonstrable
+- the guard holds on the live assignment path (§11), by making a bad assignment and
+  proving it grants nothing
 
 It cleans up its scratch resources with the admin token, because the unit admin
 role deliberately cannot delete anything.
 
-## Step 8 — The misassignment (only in `role_attribute` mode)
+## Step 8 — The misassignment
 
-**Skip this step in the default `namespace` scoping mode** — there is no attribute
-to get wrong. Section 6 of the test suite still proves the guard mechanism, and
-that is the whole story when roles are scoped by glob.
+**The money shot.** Everything so far shows the boundary refusing things. This shows
+what happens when a unit admin does something that *isn't* refused — and it is the
+question a security reviewer will actually ask: "what stops them pointing that role
+at my project?"
 
-If you are running `scoping_mode = "role_attribute"`, and you have confirmed role
-attributes actually work in your account, this is the most convincing part of the
-demo, because the wrong thing appears to work:
+Set up the problem out loud first. The developer role names
+`proj/${roleAttribute/project}`. The unit admin supplies that value themselves, it is
+free-form text, and RBAC has no way to require it start with `brand-x-`. So what
+stops them typing `brand-y-payments`?
+
+Requires `scoping_mode = "role_attribute"` (the default) and an account where role
+attributes take effect — check with §9 first, and see the note at the end of this
+step if they do not.
 
 1. In the UI, open the `brand-x-checkout-devs` team.
 2. Change the role attribute value on `brand-x-developer` from
@@ -190,12 +200,30 @@ demo, because the wrong thing appears to work:
    which the allow named, and not `brand-x-checkout` either, since the attribute
    no longer points there.
 
-The misassignment was not blocked. It was made inert. Then say the part that
-matters: **nobody was told.** The failure is silent, so if you want to *notice*
-this rather than merely survive it, alert on role-attachment events in the audit
-log.
+The misassignment was not blocked. It was made **inert**. Walk the mechanism:
+
+1. The allow resolved to `proj/brand-y-payments`.
+2. The guard's deny matched, because that project is not in `proj/brand-x-*`.
+3. Deny beats allow within one policy, order irrelevant.
+4. `viewProject` gates everything else, so the whole role died — not just the read.
+
+Then say the part that matters: **nobody was told.** No error, no warning, nothing in
+the UI marking it wrong. That is a safe failure but a silent one, so if you want to
+*notice* it rather than merely survive it, alert on role-attachment and
+role-attribute events in the audit log.
+
+Be careful with the word "prevents" here. It doesn't prevent — it neutralises. If you
+say prevents, your audience expects a rejection and you'll be contradicted by the
+next demo.
 
 Set the attribute back to `brand-x-checkout` and confirm access returns.
+
+> **If §9 reported 0 projects**, role attributes are not taking effect in your account
+> and this step cannot be demonstrated on the live assignment path. Use
+> `scoping_mode = "namespace"` so the rest of the demo works, and show the guard via
+> test §6 instead, which proves the same deny-beats-allow mechanism using a token
+> carrying the resolved policy. Say which one you are showing — the mechanism is
+> identical, the delivery path is not.
 
 > This step needs a second, non-owner account member — an owner's base role grants
 > everything regardless, and access tokens cannot carry role attributes, which is
@@ -272,6 +300,7 @@ If you are recording this, the beats that carry the story:
 3. The API refuses an out-of-namespace key (step 4)
 4. The other unit is invisible, and is not on a deny list (step 5)
 5. Role authoring is withheld, and here is why scoping it would not help (step 6)
-6. The assignment demonstrably resolves — and here is how it can silently not
+6. **A wrong assignment saves successfully and grants nothing** — the guard (step 8)
+7. The assignment demonstrably resolves, and here is how it can silently not
    (step 8b)
-7. Here is what this does not protect you from (step 9)
+8. Here is what this does not protect you from (step 9)

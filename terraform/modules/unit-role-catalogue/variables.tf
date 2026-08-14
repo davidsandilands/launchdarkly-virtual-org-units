@@ -21,26 +21,35 @@ variable "scoping_mode" {
   description = <<-EOT
     How the developer roles are scoped to projects.
 
-    "namespace" (default, VERIFIED WORKING): the developer roles name the unit's
-    key glob directly, e.g. proj/brand-x-*. One authored role covers every project
-    the unit will ever create. Trade-off: a developer can act on ALL projects in
-    the unit, not just the one their team owns. The unit is the boundary, not the
-    project.
+    "role_attribute" (DEFAULT): the roles name proj/$${roleAttribute/<name>} and the
+    project is supplied per team when the role is assigned. One authored role serves
+    every project the unit will ever create, AND each team is confined to its own
+    project. This is the mode the deny guard exists for, and the reason the guard is
+    the central control in this design rather than a nicety: nothing constrains
+    which value a unit admin supplies, so the guard is what makes a wrong one
+    harmless.
 
-    "role_attribute" (REQUIRES ACCOUNT SUPPORT): the roles name
-    proj/$${roleAttribute/<name>} and the project is supplied per team at
-    assignment time, giving per-project isolation inside the unit.
+    "namespace": the roles name the unit's key glob directly, e.g. proj/brand-x-*.
+    One fewer moving part, and nothing to misconfigure at assignment time. Trade-off:
+    a developer can act on EVERY project in the unit, not just the one their team
+    owns, so there is no isolation between projects inside a unit. Note that in this
+    mode the deny guard becomes belt-and-braces rather than load-bearing, because
+    there is no attribute value to get wrong.
 
-    Role attributes were NOT available on the account this repository was verified
-    against: POST /teams silently dropped the field, the updateRoleAttribute
-    instruction returned 200 without persisting, replaceRoleAttributes returned
-    400 "unknown field", and roleAttributes was absent from the member schema
-    entirely. Confirm the feature is present in your account before choosing this
-    mode, or the developer roles will resolve to no projects and grant nothing.
+    ACCOUNT SUPPORT: role attributes did not persist on the account this repository
+    was verified against -- POST /teams accepted and discarded the field,
+    updateRoleAttribute returned 200 without saving, replaceRoleAttributes returned
+    400 "unknown field", and the member object had no roleAttributes key at all.
+    LaunchDarkly documents no gate beyond Enterprise, and Enterprise custom roles
+    work on that account, so this may be a product issue rather than a plan one.
+
+    Confirm with tests/boundary-tests.sh section 9, which asserts the deployed role
+    resolves to exactly one project. If it reports zero, role attributes are not
+    taking effect in your account and "namespace" is the working fallback.
     See docs/06-verification-results.md.
   EOT
   type        = string
-  default     = "namespace"
+  default     = "role_attribute"
 
   validation {
     condition     = contains(["namespace", "role_attribute"], var.scoping_mode)
@@ -50,10 +59,12 @@ variable "scoping_mode" {
 
 variable "role_attribute_name" {
   description = <<-EOT
-    Name of the role attribute used to parameterise the developer roles by project,
-    when scoping_mode is "role_attribute". Referenced in policies as
-    $${roleAttribute/<name>} and supplied at assignment time. Ignored in
-    "namespace" mode.
+    Name of the role attribute that parameterises the developer roles by project.
+    Referenced in policies as $${roleAttribute/<name>} and supplied per team at
+    assignment time. Ignored when scoping_mode is "namespace".
+
+    The name must match exactly between the role policy and the value supplied at
+    assignment. A mismatch is silent: the role resolves to nothing.
   EOT
   type        = string
   default     = "project"

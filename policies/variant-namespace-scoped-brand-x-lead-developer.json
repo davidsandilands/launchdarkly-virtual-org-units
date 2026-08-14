@@ -2,12 +2,12 @@
   {
     "effect": "allow",
     "actions": ["viewProject"],
-    "resources": ["proj/${roleAttribute/project}"]
+    "resources": ["proj/brand-x-*"]
   },
   {
     "effect": "allow",
     "actions": ["viewSdkKey"],
-    "resources": ["proj/${roleAttribute/project}:env/*"]
+    "resources": ["proj/brand-x-*:env/*"]
   },
   {
     "effect": "allow",
@@ -30,12 +30,12 @@
       "updateScheduledChanges",
       "deleteFlag"
     ],
-    "resources": ["proj/${roleAttribute/project}:env/*:flag/*"]
+    "resources": ["proj/brand-x-*:env/*:flag/*"]
   },
   {
     "effect": "allow",
     "actions": ["createApprovalRequest", "reviewApprovalRequest", "applyApprovalRequest"],
-    "resources": ["proj/${roleAttribute/project}:env/*:flag/*"]
+    "resources": ["proj/brand-x-*:env/*:flag/*"]
   },
   {
     "effect": "allow",
@@ -50,7 +50,7 @@
       "updateRules",
       "updateExpiringTargets"
     ],
-    "resources": ["proj/${roleAttribute/project}:env/*:segment/*"]
+    "resources": ["proj/brand-x-*:env/*:segment/*"]
   },
   {
     "effect": "deny",

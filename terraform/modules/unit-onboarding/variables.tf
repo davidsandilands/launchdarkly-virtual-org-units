@@ -42,19 +42,23 @@ variable "set_role_attributes" {
   description = <<-EOT
     Whether to supply a role attribute value when attaching catalogue roles.
 
-    Defaults to false, matching the catalogue's default "namespace" scoping mode,
-    where the roles take no parameter.
+    Defaults to true, matching the catalogue's default scoping_mode of
+    "role_attribute". This is the line that confines each team to its own project:
+    the same authored role governs a different project for every team it is
+    attached to.
 
-    Only set this true if the catalogue uses scoping_mode = "role_attribute" AND
-    you have confirmed role attributes work in your account. On the account this
-    repository was verified against they did not: the field was accepted and
-    silently discarded, so the roles resolved to zero projects and granted
-    nothing while Terraform reported success. Setting this true without that
-    confirmation produces a delegation that looks correct and does nothing.
-    See docs/06-verification-results.md.
+    Set false when the catalogue uses scoping_mode = "namespace", where the roles
+    take no parameter and this would be a no-op.
+
+    VERIFIED CAVEAT: where an account does not support role attributes the field is
+    accepted and silently discarded -- Terraform reports success, state records the
+    value, and the role resolves to zero projects, granting nobody anything. That is
+    what happened on the account this repository was verified against. Check with
+    tests/boundary-tests.sh section 9, which asserts the deployed role resolves to
+    exactly one project. See docs/06-verification-results.md.
   EOT
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "nonprod_environment_key" {

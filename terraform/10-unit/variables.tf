@@ -62,13 +62,15 @@ variable "set_role_attributes" {
   description = <<-EOT
     Supply a role attribute value when attaching catalogue roles to teams.
 
-    Leave false unless the catalogue uses scoping_mode = "role_attribute" and you
-    have confirmed role attributes work in your account. Where they do not, the
-    field is silently discarded and the roles grant nothing while Terraform
-    reports success. See docs/06-verification-results.md.
+    Defaults to true, matching the catalogue's default scoping_mode of
+    "role_attribute". Set false only when the catalogue uses "namespace" scoping.
+
+    Where an account does not support role attributes this is silently discarded and
+    the roles grant nothing while Terraform reports success. Verify with
+    tests/boundary-tests.sh section 9. See docs/06-verification-results.md.
   EOT
   type        = bool
-  default     = false
+  default     = true
 }
 
 variable "nonprod_environment_key" {

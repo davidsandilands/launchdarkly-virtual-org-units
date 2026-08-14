@@ -8,39 +8,22 @@ them without being able to change them.
 | Role | Scoped by | Can create projects/teams | Production targeting |
 | --- | --- | --- | --- |
 | `brand-x-unit-admin` | namespace glob | yes, inside `brand-x-*` | no flag permissions at all |
-| `brand-x-lead-developer` | namespace glob | no | yes |
-| `brand-x-developer` | namespace glob | no | request only |
+| `brand-x-lead-developer` | `project` role attribute | no | yes |
+| `brand-x-developer` | `project` role attribute | no | request only |
 
 Terraform: `terraform/modules/unit-role-catalogue/main.tf`.
 Rendered JSON: `policies/`.
 
 ## How the developer roles are scoped
 
-The requirement is that the platform team must not have to author a new pair of
-roles every time the unit creates a project — that would reintroduce exactly the
-ticket queue this pattern exists to remove. There are two ways to satisfy it, and
-the choice is `scoping_mode` on the role catalogue.
+The platform team must not have to author a new pair of roles every time the unit
+creates a project — that would reintroduce exactly the ticket queue this pattern
+exists to remove. `scoping_mode` on the role catalogue picks how that is achieved.
 
-### `namespace` — the default, and the verified one
+### `role_attribute` — the default
 
-The developer roles name the unit's glob directly, `proj/brand-x-*`. One authored
-role covers every project in the unit, including ones that do not exist yet. No
-per-assignment configuration, therefore nothing that can be misconfigured or
-silently dropped.
-
-**Trade-off, stated plainly:** a `brand-x` developer can act on *every* `brand-x`
-project, not only the one their team owns. There is no isolation between projects
-inside a unit. The unit is the boundary; the project is not.
-
-For most delegated-administration cases that is the right answer — the reason you
-wanted the boundary was to separate the unit from the rest of the organisation,
-not to police teams within it. If you do need per-project isolation, use the other
-mode.
-
-### `role_attribute` — per-project isolation, requires account support
-
-The roles name `proj/${roleAttribute/project}`, a parameter supplied when the role
-is assigned to a team:
+The roles name `proj/${roleAttribute/project}`, a parameter whose value is supplied
+when the role is assigned to a team:
 
 ```
 authored once, by the platform team:
@@ -51,22 +34,43 @@ assigned by the unit, per team:
     brand-x-search-devs     →   project = brand-x-search
 ```
 
-> **Confirm this works in your account before relying on it.** On the account this
-> repository was verified against, role attributes were not available and failed
-> *silently*: `POST /teams` accepted the field and discarded it, the
-> `updateRoleAttribute` instruction returned `200` without persisting, and
-> `roleAttributes` was absent from the member schema entirely. Terraform reported
-> success while both teams' roles resolved to **zero projects** — a delegation that
-> looked correct in the UI and granted nobody anything. Full detail in
+One authored role serves every project the unit will ever create, **and** each team
+is confined to the project it owns. That combination is the whole point: standing
+delegation without giving every developer in the unit access to every project in it.
+
+This is also the mode the deny guard exists for, and the reason the guard is the
+central control in this design rather than a detail. The value above is free-form
+text a unit admin types at assignment time. LaunchDarkly does not validate it, and
+RBAC has no way to require it start with `brand-x-`. Read the next section before
+deploying this.
+
+### `namespace` — the fallback
+
+The roles name the unit's glob directly, `proj/brand-x-*`. One fewer moving part,
+and nothing to misconfigure at assignment time.
+
+**Trade-off:** a `brand-x` developer can act on *every* `brand-x` project, not only
+the one their team owns. There is no isolation between projects inside a unit.
+
+Two reasons to choose it: you genuinely do not need per-project isolation, or role
+attributes are not working in your account. In this mode the guard becomes
+belt-and-braces rather than load-bearing, because there is no attribute value to get
+wrong.
+
+> **Role attributes were not available on the account this repository was verified
+> against**, and failed *silently* in every path tried: `POST /teams` accepted the
+> field and discarded it, `updateRoleAttribute` returned `200` without persisting,
+> `replaceRoleAttributes` returned `400 unknown field` for every documented field
+> name, and a `PATCH /members` that successfully wrote `customRoles` dropped
+> `roleAttributes` on the same request. Terraform reported success while both teams'
+> roles resolved to **zero projects** — a delegation that looked correct in the UI
+> and granted nobody anything. Full detail in
 > [06-verification-results.md](06-verification-results.md).
 
-This mode is also where the design is most exposed even when it does work, because
-**nothing constrains which values a unit may supply.** That is what the guard is
-for.
-
-Whichever mode you choose, verify it with `tests/boundary-tests.sh` §9, which asks
-LaunchDarkly what a deployed team's role actually resolves to. A non-zero project
-count is the only proof that assignment took effect.
+Whichever mode you use, verify it with `tests/boundary-tests.sh` §9, which asks
+LaunchDarkly what a deployed team's role actually resolves to. In
+`role_attribute` mode it must resolve to **exactly one** project. Zero means the
+attribute never took effect.
 
 ## The guard
 
@@ -83,11 +87,46 @@ Every role in the catalogue ends with the same statement:
 Read it as: *deny the ability to see any project that is not in this unit's
 namespace.*
 
-In `role_attribute` mode this is load-bearing. Assign `brand-x-developer` to a team
-with `project = brand-y-payments` and the policy resolves to an allow on
-`proj/brand-y-payments` — followed by this deny, which overrides it. Since
-`viewProject` gates everything else, the net grant is nothing. Verified: a policy
-resolved against another unit's project granted neither read nor write.
+**In the default `role_attribute` mode this is the control that makes the whole
+design safe to delegate.** Here is the problem it solves.
+
+A unit admin holds `updateTeamCustomRoles` and `updateTeamRoleAttributes` on
+`team/brand-x-*`, which is what lets them onboard their own teams without a ticket.
+Nothing in LaunchDarkly RBAC can express "the attribute value must start with
+`brand-x-`". So a unit admin can attach `brand-x-developer` to one of their teams
+with `project = brand-y-payments` — another unit's production project.
+
+What happens then:
+
+1. The allow resolves to `proj/brand-y-payments`. So far this looks like a breach.
+2. This deny statement matches, because `brand-y-payments` is not in
+   `notResources: ["proj/brand-x-*"]`.
+3. Deny overrides allow **within the same policy**, and statement order is
+   irrelevant.
+4. `viewProject` gates every other project-scoped permission, so with it denied the
+   entire role is inert — not just the read, but every flag and segment action it
+   grants.
+
+Net effect: nothing. Verified live — a policy resolved against another unit's project
+granted neither read nor write.
+
+**Say this part precisely: the assignment is not blocked, it is made inert.** It
+saves successfully. There is no error, no warning, and nothing in the UI marks it as
+wrong. A customer told the guard "prevents" bad assignments will expect a rejection
+and will not get one. What they get is a team whose members can see nothing at all —
+which is a safe failure, but a silent one. If you want to *notice* the mistake as
+well as survive it, alert on role-attachment and role-attribute events in the audit
+log.
+
+The guard is also the reason the mistake is *contained* rather than *catastrophic*.
+Compare the alternative: without it, a mistyped attribute value hands a team full
+flag lifecycle on another unit's production project, and nothing about the
+assignment looks unusual.
+
+**The limit, in both modes.** This holds only within *this* role. Permissions across
+roles are additive and the more permissive wins, so the guard cannot defend against
+a *different*, broader role being attached to the same team. That case is a process
+control — see [04-enforced-vs-process.md](04-enforced-vs-process.md).
 
 In `namespace` mode there is no attribute to get wrong, so the guard is
 belt-and-braces: it survives someone later widening a resource specifier above
@@ -220,9 +259,8 @@ Full flag and segment lifecycle across every environment, including production:
 create and delete flags, change targeting, manage segments, and review and apply
 approval requests.
 
-Attached to the `<unit>-<product>-leads` team. Scope is every `brand-x-*` project
-in `namespace` mode, or the single project named by the role attribute in
-`role_attribute` mode.
+Attached to the `<unit>-<product>-leads` team. Scope is the single project named by
+the role attribute — or every `brand-x-*` project in `namespace` mode.
 
 ## 3. Developer
 

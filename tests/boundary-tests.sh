@@ -33,6 +33,13 @@ UNIT_PROJECT_KEY="${UNIT_PROJECT_KEY:-${UNIT_KEY}-checkout}"
 NONPROD_ENV="${NONPROD_ENV:-development}"
 PROD_ENV="${PROD_ENV:-production}"
 
+# How the catalogue's developer roles are scoped. Must match the Terraform.
+#   role_attribute (default) -- each team confined to one project via the attribute
+#   namespace                -- roles scoped by the unit's key glob
+# Changes what sections 9 and 11 assert.
+SCOPING_MODE="${SCOPING_MODE:-role_attribute}"
+ROLE_ATTRIBUTE_NAME="${ROLE_ATTRIBUTE_NAME:-project}"
+
 # Scratch keys. Suffixed per run so a failed run does not block the next one.
 RUN_ID="$$"
 SCRATCH_IN_NS="${UNIT_KEY}-boundarytest-${RUN_ID}"
@@ -100,11 +107,13 @@ fi
 # status <token> <method> <path> [body]  -> prints HTTP status code, or 000 if
 # the request never completed. Transport errors are swallowed here because the
 # code is the assertion; use body() when you need to see why something failed.
+# An optional 5th argument overrides the Content-Type, which LaunchDarkly's semantic
+# patch endpoints require (application/json; domain-model=launchdarkly.semanticpatch).
 status() {
-  local token="$1" method="$2" path="$3" body="${4:-}"
+  local token="$1" method="$2" path="$3" body="${4:-}" ctype="${5:-application/json}"
   if [ -n "$body" ]; then
     curl -sS -o /dev/null -w '%{http_code}' -X "$method" "${LD_API}${path}" \
-      -H "Authorization: ${token}" -H 'Content-Type: application/json' -d "$body" 2>/dev/null
+      -H "Authorization: ${token}" -H "Content-Type: ${ctype}" -d "$body" 2>/dev/null
   else
     curl -sS -o /dev/null -w '%{http_code}' -X "$method" "${LD_API}${path}" \
       -H "Authorization: ${token}" 2>/dev/null
@@ -138,6 +147,17 @@ cleanup() {
       team)    status "$LD_ADMIN_TOKEN" DELETE "/teams/${key}" >/dev/null ;;
       token)   status "$LD_ADMIN_TOKEN" DELETE "/tokens/${key}" >/dev/null ;;
       flag)    status "$LD_ADMIN_TOKEN" DELETE "/flags/${key}" >/dev/null ;;
+      # Restore a role attribute this run deliberately changed. Encoded as
+      # team|attribute|value so an interrupted run cannot leave a team pointing at
+      # another unit's project.
+      roleattr)
+        local rt ra rv
+        rt="${key%%|*}"; rv="${key##*|}"; ra="${key#*|}"; ra="${ra%%|*}"
+        status "$LD_ADMIN_TOKEN" PATCH "/teams/${rt}" \
+          "$(jq -n --arg k "$ra" --arg v "$rv" \
+             '{instructions:[{kind:"updateRoleAttribute",key:$k,values:[$v]}]}')" \
+          "application/json; domain-model=launchdarkly.semanticpatch" >/dev/null
+        ;;
     esac
   done
 }
@@ -561,14 +581,30 @@ for team_pair in "${UNIT_KEY}-checkout-leads:${UNIT_KEY}-lead-developer" \
 
   # The decisive assertion: how many projects does the role actually reach?
   n=$(echo "$resp" | jq -r --arg r "$want_role" '[.roles.items[]? | select(.key == $r)] | .[0].projects.totalCount // 0')
-  if [ "$n" -gt 0 ]; then
-    pass "${want_role} on ${team} resolves to ${n} project(s)"
-    note "$(echo "$resp" | jq -r --arg r "$want_role" '[.roles.items[]? | select(.key==$r)] | .[0].projects.items // [] | map(.key) | join(", ")')"
-  else
+  reached=$(echo "$resp" | jq -r --arg r "$want_role" '[.roles.items[]? | select(.key==$r)] | .[0].projects.items // [] | map(.key) | join(", ")')
+
+  if [ "$n" = "0" ]; then
     fail "role-resolves-to-nothing-${team}" "${want_role} on ${team} resolves to 0 projects"
-    note "the assignment looks correct in the UI and grants nothing"
-    note "if scoping_mode is role_attribute, your account may not support role attributes"
+    note "the assignment looks correct in the UI and grants nobody anything"
+    if [ "$SCOPING_MODE" = "role_attribute" ]; then
+      note "SCOPING_MODE=role_attribute: your account may not support role attributes"
+      note "confirm, then either fix it or fall back to scoping_mode = \"namespace\""
+    fi
     note "see docs/06-verification-results.md"
+  elif [ "$SCOPING_MODE" = "role_attribute" ]; then
+    # Parameterised mode promises per-project isolation, so exactly one project is
+    # the correct answer. More than one means the attribute is not confining the
+    # role and a team can reach its siblings' projects.
+    if [ "$n" = "1" ]; then
+      pass "${want_role} on ${team} resolves to exactly 1 project (${reached})"
+    else
+      fail "role-not-isolated-${team}" "${want_role} on ${team} resolves to ${n} projects: ${reached}"
+      note "role_attribute mode should confine a team to one project"
+      note "if this is really namespace-scoped, set SCOPING_MODE=namespace"
+    fi
+  else
+    pass "${want_role} on ${team} resolves to ${n} project(s)"
+    note "$reached"
   fi
 done
 
@@ -617,6 +653,84 @@ else
       note "a base role of reader grants read on EVERY project in the account"
       note "the namespace does not constrain it and the deny guard cannot cancel it"
       note "set the member's role to no_access; their access should come only from catalogue roles"
+    fi
+  fi
+fi
+
+# ---------------------------------------------------------------------------
+bold "11. The guard holds on the REAL assignment path"
+# ---------------------------------------------------------------------------
+# Section 6 proves the deny-beats-allow mechanism using a token that carries the
+# already-resolved policy. This section exercises the path an actual mistake would
+# take: a unit admin attaching a catalogue role to their own team with another
+# unit's project key as the attribute value.
+#
+# Two things are asserted, and the first surprises people:
+#   1. The assignment SUCCEEDS. LaunchDarkly does not validate attribute values, so
+#      there is no error to catch. The mistake is silent.
+#   2. It nonetheless grants nothing outside the namespace, because the guard inside
+#      the role overrides the allow.
+#
+# The correct value is restored afterwards, and the restore is registered with the
+# cleanup trap so an interrupted run cannot leave the demo team misconfigured.
+
+if [ "$SCOPING_MODE" != "role_attribute" ]; then
+  skip "SCOPING_MODE=${SCOPING_MODE}: no attribute value to get wrong"
+  note "in namespace mode the guard is belt-and-braces; section 6 covers the mechanism"
+else
+  PILL_TEAM="${UNIT_KEY}-checkout-devs"
+  PILL_ROLE="${UNIT_KEY}-developer"
+
+  before=$(body "$LD_ADMIN_TOKEN" GET "/teams/${PILL_TEAM}?expand=roles")
+  if ! echo "$before" | jq -e '.key' >/dev/null 2>&1; then
+    skip "team ${PILL_TEAM} not found; run terraform/10-unit"
+  else
+    good=$(echo "$before" | jq -r --arg a "$ROLE_ATTRIBUTE_NAME" '.roleAttributes[$a][0] // empty')
+    if [ -z "$good" ]; then
+      skip "${PILL_TEAM} has no ${ROLE_ATTRIBUTE_NAME} role attribute set"
+      note "role attributes are not taking effect here, so the real path cannot be exercised"
+      note "section 6 still proves the mechanism; see docs/06-verification-results.md"
+    else
+      # Registered before the mutation, so the trap restores even on interrupt.
+      CLEANUP+=("roleattr:${PILL_TEAM}|${ROLE_ATTRIBUTE_NAME}|${good}")
+
+      setattr() { # setattr <value> -> prints status
+        status "$LD_ADMIN_TOKEN" PATCH "/teams/${PILL_TEAM}" \
+          "$(jq -n --arg k "$ROLE_ATTRIBUTE_NAME" --arg v "$1" \
+             '{instructions:[{kind:"updateRoleAttribute",key:$k,values:[$v]}]}')" \
+          "application/json; domain-model=launchdarkly.semanticpatch"
+      }
+
+      code=$(setattr "$OTHER_PROJECT_KEY")
+      if is_ok "$code"; then
+        pass "assigning ${OTHER_PROJECT_KEY} as the attribute value SUCCEEDED (HTTP ${code})"
+        note "LaunchDarkly does not validate attribute values -- the mistake is silent"
+      else
+        fail "pill-assign-refused" "setting an out-of-namespace attribute returned HTTP ${code}"
+        note "expected success: the design assumes this cannot be blocked, only neutralised"
+      fi
+
+      after=$(body "$LD_ADMIN_TOKEN" GET "/teams/${PILL_TEAM}?expand=roles")
+      leaked=$(echo "$after" | jq -r --arg r "$PILL_ROLE" --arg ns "${UNIT_KEY}-" \
+        '[.roles.items[]? | select(.key==$r) | (.projects.items // [])[].key
+          | select(startswith($ns) | not)] | join(", ")')
+      if [ -z "$leaked" ]; then
+        pass "the misassigned role reaches nothing outside ${UNIT_KEY}-*"
+        note "inert, not blocked: the allow resolved and the in-policy deny overrode it"
+      else
+        fail "pill-leaked" "misassigned role reaches out-of-namespace project(s): ${leaked}"
+        note "THE GUARD IS NOT HOLDING -- this is the failure the whole design rests on"
+      fi
+
+      code=$(setattr "$good")
+      restored=$(body "$LD_ADMIN_TOKEN" GET "/teams/${PILL_TEAM}?expand=roles" \
+        | jq -r --arg a "$ROLE_ATTRIBUTE_NAME" '.roleAttributes[$a][0] // empty')
+      if [ "$restored" = "$good" ]; then
+        pass "restored ${PILL_TEAM} to ${ROLE_ATTRIBUTE_NAME}=${good}"
+      else
+        fail "pill-not-restored" "could not restore ${PILL_TEAM} (HTTP ${code}, now '${restored}')"
+        note "set ${ROLE_ATTRIBUTE_NAME}=${good} on ${PILL_TEAM} by hand"
+      fi
     fi
   fi
 fi

@@ -9,17 +9,28 @@ both.
 
 | File | Scoping |
 | --- | --- |
-| `brand-x-unit-admin.json` | namespace glob |
-| `brand-x-lead-developer.json` | namespace glob (`scoping_mode = "namespace"`, the default) |
-| `brand-x-developer.json` | namespace glob |
-| `variant-role-attribute-brand-x-lead-developer.json` | `proj/${roleAttribute/project}` |
-| `variant-role-attribute-brand-x-developer.json` | `proj/${roleAttribute/project}` |
+| `brand-x-unit-admin.json` | namespace glob — always, this role is not parameterised |
+| `brand-x-lead-developer.json` | `proj/${roleAttribute/project}` (`scoping_mode = "role_attribute"`, the default) |
+| `brand-x-developer.json` | `proj/${roleAttribute/project}` |
+| `variant-namespace-scoped-brand-x-lead-developer.json` | `proj/brand-x-*` |
+| `variant-namespace-scoped-brand-x-developer.json` | `proj/brand-x-*` |
 
-The `variant-role-attribute-*` files are the same policies with the project scope
-replaced by a role attribute, for per-project isolation inside a unit. **Confirm
-role attributes work in your account before using them** — on the account this
-repository was verified against they were silently discarded and the roles granted
-nothing. See [../docs/06-verification-results.md](../docs/06-verification-results.md).
+The two developer roles are **parameterised by default**: they name a role attribute
+rather than a project, and the project is supplied per team when the role is
+assigned. That is what lets one authored role serve every project the unit creates
+while still confining each team to its own.
+
+It is also why the `deny viewProject` guard at the bottom of each policy is the
+central control rather than a nicety. Nothing constrains which value a unit admin
+enters, so the guard is what makes a wrong one harmless — see the reading order
+below.
+
+The `variant-namespace-scoped-*` files are the fallback: the same policies with the
+project scope replaced by the unit's key glob. Use them when role attributes are not
+available in your account, accepting that a developer then reaches every project in
+the unit. **On the account this repository was verified against, role attributes were
+silently discarded** and the parameterised roles resolved to zero projects. See
+[../docs/06-verification-results.md](../docs/06-verification-results.md).
 
 ## Two differences from the HCL
 
@@ -77,8 +88,16 @@ Read the policies in this order:
    from it. Note `updateTeamDescription` and `updateTeamRoleAttributes` in the team
    statement: without them the unit can create teams but gets a 403 on the first
    *update*, so the delegation breaks later rather than immediately.
-2. `brand-x-developer.json` — the final `deny viewProject` / `notResources` pair
-   is the guard. The production `deny` above it is the same mechanism used for a
+2. `brand-x-developer.json` — read the last two statements together. The final
+   `deny viewProject` on `notResources: ["proj/brand-x-*"]` is **the guard**, and in
+   the default parameterised mode it is load-bearing: the resource above it is a
+   free-form value someone types at assignment time, and this is the only thing
+   standing between a mistyped project key and access to another unit's data.
+
+   Note what it does and does not do. A unit admin who enters `brand-y-payments`
+   gets **no error** — the assignment saves, and then grants nothing, because the
+   allow resolves and this deny overrides it within the same policy. Inert, not
+   blocked. The production `deny` just above is the same mechanism used for a
    mundane purpose, so you can see it working somewhere less abstract.
 3. `brand-x-lead-developer.json` — the same shape as the developer, minus the
    production restriction. Mostly here to show that a unit can run an internal

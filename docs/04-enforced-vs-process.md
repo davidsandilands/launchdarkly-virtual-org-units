@@ -5,7 +5,7 @@ guarantees is worse than one with known gaps, because the gaps get planned aroun
 and the overstatements get relied upon.
 
 Everything in the "Enforced" section below was exercised against a live account on
-14 August 2026 — 27 assertions, all passing. Results, plus the three defects that
+14 August 2026 — 27 passing, 1 skipped. Results, plus the four defects that
 run exposed, are in [06-verification-results.md](06-verification-results.md).
 
 ## Enforced by LaunchDarkly
@@ -127,24 +127,32 @@ security reviewer will ask second, right after they ask about creation.
 
 ### 3. Role attribute values are free-form — and may not work at all
 
-Two separate problems, and the second is worse.
+**This is the one the whole design is built around**, because parameterised roles are
+the default and this is their exposure. Two separate problems.
 
 **They are unvalidated.** When a parameterised role is assigned, the attribute
-value is arbitrary text. Nothing stops another unit's project key being entered.
+value is arbitrary text typed by whoever holds `updateTeamRoleAttributes` on the
+team — i.e. the unit admin. Nothing stops another unit's project key being entered.
 Prefixing the attribute inside the resource specifier — hoping
 `proj/brand-x-${roleAttribute/project}` would force the value to stay in-namespace
 — does not work.
 
-**They may be unavailable, and fail silently.** On the account this repository was
-verified against, role attributes did not function: the field was accepted and
-discarded on team create, the `updateRoleAttribute` instruction returned `200`
-without persisting, `replaceRoleAttributes` returned `400 unknown field`, and
-`roleAttributes` was absent from the member schema entirely. Terraform reported
-success while both teams' roles resolved to **zero projects**.
+There is no RBAC construct that constrains which values reach which teams. It is not
+a matter of finding the right action to withhold; the capability is all-or-nothing.
 
-This is why `scoping_mode` defaults to `"namespace"`, which scopes the developer
-roles by the unit's key glob and needs no per-assignment configuration at all. The
-cost is that developers reach every project in their unit rather than one. See
+**They may be unavailable, and fail silently.** On the account this repository was
+verified against, role attributes did not function in any path tried: the field was
+accepted and discarded on team create (including when the attached role genuinely
+referenced the attribute), `updateRoleAttribute` returned `200` without persisting,
+`replaceRoleAttributes` returned `400 unknown field` for every documented field name,
+and a `PATCH /members` that successfully wrote `customRoles` silently dropped
+`roleAttributes` in the same request. Terraform reported success while both teams'
+roles resolved to **zero projects**.
+
+`scoping_mode = "namespace"` is the fallback for this: it scopes the developer roles
+by the unit's key glob and needs no per-assignment configuration at all. The cost is
+that developers reach every project in their unit rather than one, and the guard
+drops from load-bearing to belt-and-braces. See
 [03-the-role-catalogue.md](03-the-role-catalogue.md) for the trade-off and
 [06-verification-results.md](06-verification-results.md) for the evidence.
 
@@ -227,8 +235,8 @@ out contractually, since it is effectively a second organisation.
 | Assignment actually taking effect | n/a | §9 | read back the resolved project count; do not trust apply success |
 | Unit authoring its own roles | No | §5 | not delegated; `createRole` withheld |
 | Attaching a broad role to a unit team | **No** | — | catalogue discipline + audit log alerting |
-| Role attributes available at all | **No** | — | `scoping_mode = "namespace"`; confirm before using attributes |
-| Per-project isolation inside a unit | **No** in namespace mode | — | accepted trade-off, or `role_attribute` mode if supported |
+| Role attributes available at all | **No** | §9 | verify resolution; `scoping_mode = "namespace"` is the fallback |
+| Per-project isolation inside a unit | **Yes** in the default role_attribute mode | §9 | one project per team via the attribute; lost in namespace mode |
 | Sprawl within the namespace | No | — | unit's own pipeline governance |
 | Tag drift | No | — | do not scope policies by tag |
 | Destructive Terraform | No | — | withhold deletes; archive on destroy; derive keys |

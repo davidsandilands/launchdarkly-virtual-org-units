@@ -6,6 +6,11 @@
 unit_key  = "brand-x"
 unit_name = "Brand X"
 
+# Supplies the project as a role attribute when attaching catalogue roles, which is
+# what confines each team to its own project. Must match the catalogue's
+# scoping_mode. Set false if the catalogue uses "namespace".
+# set_role_attributes = true
+
 products = {
   "checkout" = {
     name = "Checkout"

@@ -110,7 +110,12 @@ resource "launchdarkly_team" "leads" {
     (var.role_attribute_name) = [launchdarkly_project.this.key]
   } : null
 
-  member_ids = try(data.launchdarkly_team_members.leads[0].team_members[*].id, [])
+  # null, not [], when no emails are supplied. `[]` is an instruction to have NO
+  # members, so Terraform would strip anyone added by an identity provider or by
+  # hand on every apply. null leaves the attribute unmanaged and LaunchDarkly keeps
+  # whatever is there. This is the "one membership authority" rule the variable
+  # documentation describes, actually enforced.
+  member_ids = length(var.lead_member_emails) > 0 ? data.launchdarkly_team_members.leads[0].team_members[*].id : null
 }
 
 resource "launchdarkly_team" "developers" {
@@ -124,5 +129,5 @@ resource "launchdarkly_team" "developers" {
     (var.role_attribute_name) = [launchdarkly_project.this.key]
   } : null
 
-  member_ids = try(data.launchdarkly_team_members.developers[0].team_members[*].id, [])
+  member_ids = length(var.developer_member_emails) > 0 ? data.launchdarkly_team_members.developers[0].team_members[*].id : null
 }

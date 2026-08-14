@@ -4,11 +4,20 @@ Verified 14 August 2026 against a live LaunchDarkly account, applying both
 Terraform stages for real and driving the REST API directly. Terraform provider
 3.1.3, Terraform 1.5.7.
 
-Final state: **27 assertions, 27 passed, 0 failed, 0 skipped.**
+Final state on the verification account: **27 passed, 0 failed, 1 skipped** across 11
+sections. The skip is §11, which needs role attributes — see Defect 1 and the
+re-probe below.
 
-The run found three defects and three behaviours worth knowing. All three defects
-are fixed in this repository. This document exists so nobody has to rediscover
-them.
+The runs found **four defects and three behaviours** worth knowing. All four defects
+are fixed in this repository. This document exists so nobody has to rediscover them.
+
+> **On the default scoping mode.** The repository ships
+> `scoping_mode = "role_attribute"`, because parameterised roles are the correct
+> pattern and the deny guard exists precisely to make them safe. Role attributes do
+> **not** work on the account verified here, so its local (gitignored)
+> `terraform.tfvars` overrides to `"namespace"`. The committed defaults and the local
+> deployment therefore differ on purpose, and that is stated in the tfvars file
+> itself rather than left to be discovered.
 
 ## Verified as enforced by the platform
 
@@ -77,8 +86,40 @@ deployed team's attached role actually resolves to. That assertion is what would
 have caught this on the first run. Any design that depends on assignment-time
 configuration needs a test that reads back the deployed state, not a simulation.
 
-Confirm role attributes exist in your account before choosing
+Confirm role attributes exist in your account before relying on
 `scoping_mode = "role_attribute"`.
+
+### Re-probe, same day, after the default was changed back to `role_attribute`
+
+The default was later flipped back to `role_attribute` on the grounds that it is the
+correct pattern and the one the guard exists for. That prompted a proper re-probe,
+including the leading hypothesis that LaunchDarkly might discard attribute values
+whose key no attached role references — the roles having been namespace-scoped at the
+time of the original test.
+
+**Hypothesis disproven. Role attributes do not work on this account, in any path:**
+
+| Attempt (role now genuinely names `${roleAttribute/project}`) | Result |
+| --- | --- |
+| `POST /teams` with `roleAttributes` | **201** — `roleAttributes: null`, resolves to 0 projects |
+| semantic patch `updateRoleAttribute {key, values}` | **200** — still null, still 0 |
+| semantic patch `replaceRoleAttributes`, field `roleAttributes` | **400** unknown field |
+| ...field `values` / `attributes` / `roleAttribute` | **400** unknown field, all three |
+| `PATCH /members/{id}` writing `customRoles` **and** `roleAttributes` together | **200** — `customRoles` persisted, `roleAttributes` silently dropped |
+
+That last row is the clearest evidence: the same request wrote one field and
+discarded the other. This is not a request-shape problem.
+
+LaunchDarkly documents no gate beyond Enterprise, and Enterprise custom roles
+demonstrably work on this account, so this looks like a product-side gap rather than
+a plan limitation. Worth raising with LaunchDarkly before designing a customer
+rollout around parameterised roles.
+
+**What §9 and §11 do about it.** §9 asserts the deployed role resolves to exactly one
+project in `role_attribute` mode, and it caught this cleanly — two failures naming
+the cause. §11, which exercises the guard on the live assignment path, skips with an
+explanation rather than passing vacuously. Both behaved correctly, which is the point
+of having them.
 
 ## Defect 2 — the unit could create teams but not update them
 
@@ -115,6 +156,38 @@ against a system that grants nobody anything.
 
 **Fixed:** §9 reads back deployed state and asserts a non-zero resolved project
 count.
+
+## Defect 4 — Terraform stripped team members added outside it
+
+Found by §10 reporting one fewer member than the previous run. The onboarding module
+set:
+
+```hcl
+member_ids = try(data.launchdarkly_team_members.developers[0].team_members[*].id, [])
+```
+
+With no emails supplied that evaluates to `[]`, which is not "don't manage members" —
+it is "this team should have **no** members". So every apply removed anyone added by
+hand or by an identity provider. A member added to `brand-x-checkout-devs` in the UI
+was silently deleted from the team on the next `terraform apply`.
+
+The irony is that the variable's own documentation warned about exactly this — only
+one system should own team membership — while the code enforced the opposite.
+
+Note the contrast that made it obvious: `brand-x-admins`, created in stage 00, kept
+its manually-added member, because that resource never sets `member_ids` at all.
+
+**Fixed:** supply `null` rather than `[]` when no emails are given, which leaves the
+attribute unmanaged and lets LaunchDarkly keep whatever is there:
+
+```hcl
+member_ids = length(var.developer_member_emails) > 0 ? data.launchdarkly_team_members.developers[0].team_members[*].id : null
+```
+
+The general lesson for any Terraform provider: for a computed-and-optional collection,
+`[]` and `null` mean opposite things. `[]` asserts emptiness; `null` declines to
+manage. Reaching for `try(..., [])` to avoid an index error quietly chooses the
+destructive one.
 
 ## Behaviour 1 — token capping is real but invisible in metadata
 

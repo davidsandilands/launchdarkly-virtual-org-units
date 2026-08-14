@@ -36,31 +36,59 @@ unit:
 | Role | Scoped by | Purpose |
 | --- | --- | --- |
 | `brand-x-unit-admin` | `proj/brand-x-*`, `team/brand-x-*` | creates projects, environments and teams; assigns catalogue roles; holds no flag permissions |
-| `brand-x-lead-developer` | `proj/brand-x-*` | full flag lifecycle including production |
-| `brand-x-developer` | `proj/brand-x-*` | full lifecycle in development; request-only in production |
+| `brand-x-lead-developer` | `project` role attribute | full flag lifecycle including production |
+| `brand-x-developer` | `project` role attribute | full lifecycle in development; request-only in production |
 
-All three roles are scoped by the key glob, so one authored role serves every
-project the unit ever creates — including ones that do not exist yet. That is what
-makes the delegation standing rather than a ticket queue with extra steps, and it
-needs no per-assignment configuration that could be misapplied.
+The unit admin is scoped by the key glob. The two developer roles are
+**parameterised**: they name `proj/${roleAttribute/project}` and the project is
+supplied per team when the role is assigned.
 
-The trade-off: a `brand-x` developer can act on *every* `brand-x` project, not only
-the one their team owns. The unit is the boundary; the project is not. If you need
-per-project isolation inside a unit, set `scoping_mode = "role_attribute"` — but
-[confirm role attributes work in your account first](docs/06-verification-results.md),
-because where they do not they fail silently and grant nobody anything.
+```
+authored once, by the platform team:   proj/${roleAttribute/project}
 
-Every role carries a guard:
+assigned by the unit, per team:        brand-x-checkout-devs → project = brand-x-checkout
+                                       brand-x-search-devs   → project = brand-x-search
+```
+
+That gives both properties at once: one authored role covers every project the unit
+will ever create, **and** each team is confined to the project it owns. Standing
+delegation without handing every developer in the unit access to every project in it.
+
+## The guard, and why it is the whole design
+
+Parameterisation creates the risk that makes this pattern interesting. That attribute
+value is **free-form text a unit admin types at assignment time.** LaunchDarkly does
+not validate it, and RBAC cannot express "must start with `brand-x-`". A unit admin
+can attach `brand-x-developer` to their own team with `project = brand-y-payments` —
+another unit's production project.
+
+So every role ends with this:
 
 ```json
 { "effect": "deny", "actions": ["viewProject"], "notResources": ["proj/brand-x-*"] }
 ```
 
-`viewProject` gates every other project-scoped permission, and a deny overrides
-allows within the same policy. Assign a role with another unit's project key and
-the allow resolves, the deny overrides it, and the net grant is nothing. The
-misassignment is not blocked — it is made **inert**. Verified against a live
-account.
+What happens on that bad assignment:
+
+1. The allow resolves to `proj/brand-y-payments`.
+2. This deny matches, because that project is not in `proj/brand-x-*`.
+3. Deny overrides allow **within the same policy**; statement order is irrelevant.
+4. `viewProject` gates every other project-scoped permission, so the entire role goes
+   inert — not just the read, but every flag and segment action it grants.
+
+Net grant: nothing. Verified against a live account.
+
+**Precisely: the assignment is not blocked, it is made inert.** It saves
+successfully, with no error and no warning. Anyone told the guard "prevents" bad
+assignments will expect a rejection and will not get one — what they get is a team
+that can see nothing at all. A safe failure, but a silent one, so alert on
+role-attachment events if you want to notice as well as survive.
+
+If you do not need per-project isolation, `scoping_mode = "namespace"` scopes the
+developer roles by the key glob instead. Simpler, one fewer thing to misconfigure,
+and the guard drops to belt-and-braces because there is no value to get wrong. It is
+also the fallback where role attributes are unavailable —
+[which is what happened on the account this was verified against](docs/06-verification-results.md).
 
 ## Honest boundaries
 
@@ -155,7 +183,7 @@ terraform/
 policies/                    the same policies as raw JSON, for the UI or REST API
                              plus variant-role-attribute-* for the other scoping mode
 tests/
-  boundary-tests.sh          10 sections, 27 assertions; most pass by being refused
+  boundary-tests.sh          11 sections; most pass by being refused
 ```
 
 The Terraform is split by **who applies it**, not by resource type. That split is
@@ -263,8 +291,9 @@ version with the failures in it, which is the interesting part.
 ## Verified against
 
 Applied for real against a live LaunchDarkly account on **14 August 2026**.
-Provider **3.1.3**, Terraform **1.5.7**. Final result: **27 assertions, 27 passed,
-0 failed, 0 skipped**.
+Provider **3.1.3**, Terraform **1.5.7**. Final result on that account: **27 passed,
+0 failed, 1 skipped** across 11 sections. The skip is §11, which needs role
+attributes; see below.
 
 Full results, including the three defects that run exposed and fixed, are in
 [docs/06-verification-results.md](docs/06-verification-results.md). The headlines:

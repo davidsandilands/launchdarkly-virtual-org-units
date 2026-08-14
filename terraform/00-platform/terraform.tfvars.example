@@ -5,6 +5,12 @@ units = {
   "brand-x" = {
     name = "Brand X"
 
+    # "role_attribute" (the default) confines each team to its own project and is
+    # the mode the deny guard exists for. Switch to "namespace" only if
+    # tests/boundary-tests.sh section 9 reports that roles resolve to 0 projects,
+    # which means role attributes are not taking effect in your account.
+    # scoping_mode = "namespace"
+
     # Leave false unless you want the unit's own pipeline to be able to delete
     # its projects and teams. Terraform will attempt deletion whenever a resource
     # block is removed, so this is the difference between a bad merge being an

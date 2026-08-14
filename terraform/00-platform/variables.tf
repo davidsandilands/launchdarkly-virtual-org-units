@@ -11,9 +11,10 @@ variable "units" {
     allow_destructive_actions = optional(bool, false)
     allow_token_minting       = optional(bool, false)
 
-    # "namespace" (default, verified working) or "role_attribute" (requires
-    # account support -- see docs/06-verification-results.md).
-    scoping_mode = optional(string, "namespace")
+    # "role_attribute" (default) gives per-project isolation and is the mode the
+    # deny guard exists for. "namespace" is the fallback for accounts where role
+    # attributes do not take effect -- see docs/06-verification-results.md.
+    scoping_mode = optional(string, "role_attribute")
   }))
 
   default = {
